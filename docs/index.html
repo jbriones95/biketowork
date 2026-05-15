@@ -13,10 +13,27 @@
       <div id="controls">
         <h3>Bike vs Transit — Denver Metro</h3>
         <p id="instructions">Click map to set origin and destination. Both points must be within the Denver Metro geofence.</p>
+        <div id="presets">
+          <label for="presetSelect">Presets:</label>
+          <select id="presetSelect" aria-label="Preset locations">
+            <option value="">— select —</option>
+            <option value="downtown">Downtown (16th St Mall)</option>
+            <option value="union">Union Station</option>
+            <option value="dtech">Denver Tech Center</option>
+            <option value="centralpark">Central Park / Stapleton</option>
+          </select>
+          <button id="presetSetOrigin">Set Origin</button>
+          <button id="presetSetDest">Set Destination</button>
+        </div>
+
         <div id="compare">
           <h4>Comparison</h4>
           <div id="compareSummary">No comparison yet.</div>
           <div id="compareBar"><div id="compareFill"></div></div>
+        </div>
+        <div id="userPrefs">
+          <label for="weight">Weight (kg)</label>
+          <input id="weight" type="number" min="30" max="200" value="70" aria-label="Weight in kilograms" />
         </div>
         <div id="buttons">
           <button id="clear">Clear</button>
@@ -26,6 +43,7 @@
         <div id="results">
           <h4>Bike</h4>
           <div id="bikeResult">No route yet.</div>
+          <div id="bikeStats" aria-live="polite"></div>
           <h4>Transit</h4>
           <div id="transitResult">Transit routing not configured. See README to add a transit provider or enable a proxy.</div>
           <div id="transitAlternatives"></div>

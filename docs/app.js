@@ -48,6 +48,25 @@
     if (destMarker) destMarker.setLatLng(latlng); else destMarker = L.marker(latlng, {title:'Destination', icon: L.icon({iconUrl: 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/images/marker-icon.png', iconAnchor:[12,41]})}).addTo(map).bindPopup('Destination');
   }
 
+  // Preset coordinates (lat, lng)
+  const PRESETS = {
+    downtown: { name: '16th St Mall', coord: L.latLng(39.7486, -104.9966) },
+    union: { name: 'Union Station', coord: L.latLng(39.7526, -104.9998) },
+    dtech: { name: 'Denver Tech Center', coord: L.latLng(39.6781, -104.9138) },
+    centralpark: { name: 'Central Park', coord: L.latLng(39.7897, -104.8680) }
+  };
+
+  document.getElementById('presetSetOrigin').addEventListener('click', () => {
+    const v = document.getElementById('presetSelect').value;
+    if (!v || !PRESETS[v]) return alert('Select a preset first');
+    setOrigin(PRESETS[v].coord);
+  });
+  document.getElementById('presetSetDest').addEventListener('click', () => {
+    const v = document.getElementById('presetSelect').value;
+    if (!v || !PRESETS[v]) return alert('Select a preset first');
+    setDest(PRESETS[v].coord);
+  });
+
   map.on('click', function(e){
     if (!origin) setOrigin(e.latlng);
     else if (!dest) setDest(e.latlng);
@@ -89,6 +108,12 @@
 
       document.getElementById('bikeResult').textContent = `Distance: ${distance_km} km — Time: ${minutes} min`;
       lastBike = { distance_m, duration_s };
+      // Estimate calories burned (simple formula: MET for cycling ~8.5, calories = MET * weight_kg * hours)
+      const weight = Number(document.getElementById('weight').value) || 70;
+      const hours = (duration_s || 0) / 3600;
+      const MET = 8.5; // brisk cycling
+      const calories = Math.round(MET * weight * hours);
+      document.getElementById('bikeStats').textContent = `Estimated calories: ${calories} kcal • Avg speed ${(distance_km && duration_s) ? ((distance_km/(duration_s/3600)).toFixed(1)+' km/h') : 'N/A'}`;
       renderComparison();
 
       if (routeLayer) map.removeLayer(routeLayer);

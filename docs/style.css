@@ -13,3 +13,12 @@ button{margin-right:8px;padding:6px 10px}
 #compareBar{height:16px;background:#eee;border-radius:8px;overflow:hidden}
 #compareFill{height:100%;width:0;background:linear-gradient(90deg,#2a9d8f,#2774ae)}
 #transitAlternatives{margin-top:8px}
+#presets{display:flex;gap:8px;align-items:center;margin:8px 0}
+#presets select{flex:1}
+#userPrefs{margin:8px 0}
+#bikeStats{font-size:13px;color:#333;margin-top:6px}
+
+@media (max-width: 800px){
+  #controls{position:absolute;z-index:200;left:8px;top:8px;width:320px}
+  #map{height:calc(100vh - 0px)}
+}
