@@ -11,8 +11,6 @@ main = "./cloudflare/worker.js"
 compatibility_date = "2026-05-15"
 
 # Your Cloudflare account id. Replace with the value from the Cloudflare dashboard.
-account_id = "YOUR_ACCOUNT_ID"
-
 # If you want to publish to workers.dev (short-lived URL), set workers_dev = true.
 workers_dev = true
 

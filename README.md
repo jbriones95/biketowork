@@ -6,8 +6,9 @@ Key points
 - The OpenRouteService (ORS) API key MUST be kept private. This repository does NOT contain any keys.
 - A small local Express proxy reads the ORS key from the environment and forwards routing requests. That keeps the key off the public frontend and is suitable for local development.
 - The frontend is static and located in `docs/` so it can be published to GitHub Pages. If you want to publish to GitHub Pages and still keep the key private, you must NOT enable routing from the public site — instead run the local proxy and use the local site.
- - The frontend is static and located in `docs/` so it can be published to GitHub Pages. If you prefer a zero-server setup, bike routing now uses the public OSRM demo endpoint (no key required). Transit still requires a provider.
- - Serverless functions are included under `api/` so you can deploy the proxy to Vercel (or Netlify functions) and keep your ORS/OTP keys private in the cloud. See the Deploy section.
+- The frontend is static and located in `docs/` so it can be published to GitHub Pages. If you prefer a zero-server setup, bike routing now uses the public OSRM demo endpoint (no key required). Transit still requires a provider.
+- Serverless functions are included under `api/` so you can deploy the proxy to Vercel (or Netlify functions) and keep your ORS/OTP keys private in the cloud. See the Deploy section.
+ - The frontend is static and located in `docs/` so it can be published to GitHub Pages. Bike routing uses the public OSRM demo endpoint (no key required). Transit still requires a provider.
 
 Local development
 
