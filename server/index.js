@@ -27,14 +27,24 @@ app.post('/api/directions', async (req, res) => {
   const url = `https://api.openrouteservice.org/v2/directions/${encodeURIComponent(profile)}/geojson`;
 
   try {
-    const resp = await fetch(url, {
+    // Try POST first (ORS standard for /geojson). Include Accept header.
+    let resp = await fetch(url, {
       method: 'POST',
       headers: {
         'Authorization': apiKey,
-        'Content-Type': 'application/json'
+        'Content-Type': 'application/json',
+        'Accept': 'application/json, application/geo+json'
       },
       body: JSON.stringify({ coordinates })
     });
+
+    // Some ORS deployments reject POST on this path; fallback to GET with start/end query params.
+    if (resp.status === 405) {
+      const start = `${coordinates[0][0]},${coordinates[0][1]}`;
+      const end = `${coordinates[1][0]},${coordinates[1][1]}`;
+      const getUrl = `https://api.openrouteservice.org/v2/directions/${encodeURIComponent(profile)}?start=${start}&end=${end}`;
+      resp = await fetch(getUrl, { method: 'GET', headers: { 'Authorization': apiKey, 'Accept': 'application/json, application/geo+json' } });
+    }
 
     const data = await resp.text();
     // Forward status and body
