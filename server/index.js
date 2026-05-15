@@ -24,10 +24,12 @@ app.post('/api/directions', async (req, res) => {
     return res.status(400).json({ error: 'Request must include profile and coordinates [[lon,lat],[lon,lat]]' });
   }
 
-  const url = `https://api.openrouteservice.org/v2/directions/${encodeURIComponent(profile)}/geojson`;
+  const ORS_BASE = (process.env.ORS_BASE_URL || 'https://api.openrouteservice.org').replace(/\/$/, '');
+  const url = `${ORS_BASE}/v2/directions/${encodeURIComponent(profile)}/geojson`;
 
   try {
     // Try POST first (ORS standard for /geojson). Include Accept header.
+    console.log(`[proxy] POST ${url}`);
     let resp = await fetch(url, {
       method: 'POST',
       headers: {
@@ -37,18 +39,27 @@ app.post('/api/directions', async (req, res) => {
       },
       body: JSON.stringify({ coordinates })
     });
-
-    // Some ORS deployments reject POST on this path; fallback to GET with start/end query params.
+    let bodyText = await resp.text();
+    console.log(`[proxy] response ${resp.status} ${resp.statusText} (POST)`);
     if (resp.status === 405) {
+      // Some ORS deployments reject POST on this path; fallback to GET with start/end query params.
       const start = `${coordinates[0][0]},${coordinates[0][1]}`;
       const end = `${coordinates[1][0]},${coordinates[1][1]}`;
-      const getUrl = `https://api.openrouteservice.org/v2/directions/${encodeURIComponent(profile)}?start=${start}&end=${end}`;
+      const getUrl = `${ORS_BASE}/v2/directions/${encodeURIComponent(profile)}?start=${start}&end=${end}`;
+      console.log(`[proxy] fallback GET ${getUrl}`);
       resp = await fetch(getUrl, { method: 'GET', headers: { 'Authorization': apiKey, 'Accept': 'application/json, application/geo+json' } });
+      bodyText = await resp.text();
+      console.log(`[proxy] response ${resp.status} ${resp.statusText} (GET)`);
     }
 
-    const data = await resp.text();
-    // Forward status and body
-    res.status(resp.status).contentType(resp.headers.get('content-type') || 'application/json').send(data);
+    // If non-2xx, include remote body in our error for diagnosis (safe: doesn't include the API key)
+    if (!resp.ok) {
+      console.error('[proxy] non-ok response from ORS:', resp.status, bodyText);
+      return res.status(502).json({ error: 'ORS returned non-OK status', status: resp.status, body: bodyText });
+    }
+
+    // Forward successful response
+    res.status(resp.status).contentType(resp.headers.get('content-type') || 'application/json').send(bodyText);
   } catch (err) {
     console.error('Proxy error', err);
     res.status(500).json({ error: 'Proxy error', details: String(err) });
