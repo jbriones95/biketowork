@@ -111,7 +111,27 @@
 
       document.getElementById('bikeResult').textContent = `Distance: ${distance_km} km — Time: ${minutes} min`;
       lastBike = { distance_m, duration_s };
-
+      
+      // Also try the local pgRouting LTS-weighted router if available
+      try {
+        const resp2 = await fetch('http://localhost:8000/route', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ origin: [origin.lng, origin.lat], destination: [dest.lng, dest.lat], alpha: 1.0 })
+        });
+        if (resp2.ok){
+          const jr = await resp2.json();
+          if (jr && jr.geojson){
+            // display LTS route on map
+            if (routeLayer) map.removeLayer(routeLayer);
+            routeLayer = L.geoJSON(jr.geojson, { style: { color: '#e76f51', weight: 5, opacity: 0.9 } }).addTo(map);
+            map.fitBounds(routeLayer.getBounds(), { padding: [20,20] });
+            document.getElementById('routeResult').textContent = `LTS route: ${Math.round((jr.distance_m||0)/1000)} km — avg LTS ${jr.avg_lts ? jr.avg_lts.toFixed(2) : 'N/A'}`;
+          }
+        }
+      } catch (err){
+        // ignore if local router not available
+      }
       // Estimate calories burned (simple formula: MET for cycling ~8.5, calories = MET * weight_kg * hours)
       const weight = Number(document.getElementById('weight').value) || 70;
       const hours = (duration_s || 0) / 3600;
@@ -131,7 +151,6 @@
   }
 
   document.getElementById('routeBike').addEventListener('click', routeBike);
-  document.getElementById('routeTransit').addEventListener('click', routeTransit);
 
   // Decode polyline encoded with precision 1e6 (OTP default)
   function decodePolyline(encoded, precision) {
@@ -161,67 +180,8 @@
   }
 
   async function routeTransit(){
-    if (!origin || !dest) { alert('Please set both origin and destination.'); return; }
-
-    const coords = [[origin.lng, origin.lat], [dest.lng, dest.lat]];
-    document.getElementById('transitResult').textContent = 'Calculating transit...';
-
-    try {
-      const resp = await fetch('/api/transit', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ coordinates: coords }) });
-      if (!resp.ok){
-        const txt = await resp.text();
-        document.getElementById('transitResult').textContent = 'Transit error: ' + resp.status + ' ' + txt;
-        return;
-      }
-      const data = await resp.json();
-      if (!data.plan || !data.plan.itineraries || data.plan.itineraries.length === 0){
-        document.getElementById('transitResult').textContent = 'No transit itineraries found.';
-        return;
-      }
-
-      lastTransit = data.plan.itineraries;
-      renderTransitAlternatives();
-      const itin = data.plan.itineraries[0];
-      const durationMin = Math.round(itin.duration / 60);
-      const transfers = itin.transfers != null ? itin.transfers : (itin.legs ? Math.max(0, itin.legs.length - 1) : 'N/A');
-      document.getElementById('transitResult').innerHTML = `<strong>Duration:</strong> ${durationMin} min — <strong>Transfers:</strong> ${transfers}`;
-      renderComparison();
-
-      // Render legs geometries if present
-      const legGroup = L.layerGroup();
-      itin.legs.forEach(leg => {
-        if (leg.legGeometry && leg.legGeometry.points){
-          const coords = decodePolyline(leg.legGeometry.points, 1e6).map(p => [p[0], p[1]]);
-          const color = leg.mode === 'WALK' ? '#666' : '#2774ae';
-          const line = L.polyline(coords, { color, weight: 4, opacity: 0.9, dashArray: leg.mode === 'WALK' ? '4,8' : null }).addTo(legGroup);
-        }
-      });
-
-      if (routeLayer) { map.removeLayer(routeLayer); routeLayer = null }
-      if (legGroup.getLayers().length) {
-        routeLayer = legGroup.addTo(map);
-        map.fitBounds(routeLayer.getBounds(), { padding: [20,20] });
-      }
-
-      // Show per-leg breakdown
-      const resultsDiv = document.getElementById('transitResult');
-      const legsHtml = itin.legs.map(leg => {
-        const mode = leg.mode || '';
-        const headsign = leg.headsign ? ` towards ${leg.headsign}` : '';
-        const dur = Math.round(leg.duration/60);
-        const from = leg.from && leg.from.name ? leg.from.name : '';
-        const to = leg.to && leg.to.name ? leg.to.name : '';
-        return `<div class="transit-leg"><strong>${mode}</strong>${headsign} — ${dur} min (${from} → ${to})</div>`;
-      }).join('');
-      resultsDiv.innerHTML += '<div>' + legsHtml + '</div>';
-
-      // allow selecting alternatives
-      renderComparison();
-
-    } catch (err){
-      console.error(err);
-      document.getElementById('transitResult').textContent = 'Error fetching transit: ' + String(err);
-    }
+    // Transit removed; we always prefer the LTS-weighted router. Keep function stub.
+    alert('Transit routing has been disabled. Use the "Get Safer Route" button to compute LTS-weighted bike routes.');
   }
 
   function renderTransitAlternatives(){

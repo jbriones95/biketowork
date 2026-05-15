@@ -1,4 +1,5 @@
 from fastapi import FastAPI, HTTPException
+from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 import psycopg2
 import os
@@ -8,6 +9,15 @@ from osm_lts import classify
 DATABASE_URL = os.environ.get('DATABASE_URL', 'postgresql://osm:osm@localhost:5432/gis')
 
 app = FastAPI()
+
+# Allow CORS from local frontend/dev servers. For production, lock this down.
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 
 class RouteRequest(BaseModel):
     origin: list  # [lon, lat]
@@ -60,19 +70,32 @@ def route(req: RouteRequest):
             raise HTTPException(status_code=404, detail='no route found')
 
         edge_ids = [r[1] for r in rows]
-        # fetch geometries for edges
-        cur.execute('SELECT id, ST_AsGeoJSON(geom)::json as geom, lts FROM ways WHERE id = ANY(%s)', (edge_ids,))
+        # fetch geometries for edges and build an id->(geom,lts,length_m) map
+        cur.execute('SELECT id, ST_AsGeoJSON(geom)::json as geom, lts, length_m FROM ways WHERE id = ANY(%s)', (edge_ids,))
         feats = cur.fetchall()
+        fmap = {f[0]: {'geom': f[1], 'lts': f[2], 'length_m': f[3]} for f in feats}
+
         features = []
-        total_m = 0
-        for fid, geom, lts in feats:
+        total_m = 0.0
+        lts_values = []
+        # preserve path order using edge_ids
+        for eid in edge_ids:
+            meta = fmap.get(eid)
+            if not meta:
+                continue
             features.append({
                 'type': 'Feature',
-                'properties': {'id': fid, 'lts': lts},
-                'geometry': geom
+                'properties': {'id': eid, 'lts': meta['lts']},
+                'geometry': meta['geom']
             })
+            if meta.get('length_m'):
+                total_m += meta['length_m']
+            if meta.get('lts') is not None:
+                lts_values.append(meta['lts'])
+
+        avg_lts = (sum(lts_values) / len(lts_values)) if lts_values else None
         geojson = {'type':'FeatureCollection','features': features}
-        return {'geojson': geojson, 'edge_count': len(features)}
+        return {'geojson': geojson, 'edge_count': len(features), 'distance_m': total_m, 'avg_lts': avg_lts}
 
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
