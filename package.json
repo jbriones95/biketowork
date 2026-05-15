@@ -1,0 +1,13 @@
+{
+  "name": "biketowork",
+  "version": "0.1.0",
+  "private": true,
+  "scripts": {
+    "start": "node server/index.js"
+  },
+  "dependencies": {
+    "express": "^4.18.2",
+    "node-fetch": "^3.4.0",
+    "cors": "^2.8.5"
+  }
+}

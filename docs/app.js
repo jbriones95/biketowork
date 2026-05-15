@@ -1,0 +1,263 @@
+// Minimal frontend using Leaflet. Sends routing requests to /api/directions which must be proxied to ORS.
+(function(){
+  const DENVER_CENTER = [39.7392, -104.9903];
+  const GEOFENCE_RADIUS_M = 50000; // 50 km
+
+  const map = L.map('map').setView(DENVER_CENTER, 11);
+
+  L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+    maxZoom: 19,
+    attribution: '© OpenStreetMap'
+  }).addTo(map);
+
+  // Geofence circle
+  const geofence = L.circle(DENVER_CENTER, { radius: GEOFENCE_RADIUS_M, color: '#2a9d8f', weight:1, fill:false }).addTo(map);
+
+  let origin = null;
+  let dest = null;
+  let originMarker, destMarker, routeLayer;
+  let lastBike = null;
+  let lastTransit = null;
+
+  function pointInGeofence(latlng){
+    const R = 6371000;
+    const toRad = v => v * Math.PI / 180;
+    const dLat = toRad(latlng.lat - DENVER_CENTER[0]);
+    const dLon = toRad(latlng.lng - DENVER_CENTER[1]);
+    const a = Math.sin(dLat/2)*Math.sin(dLat/2) + Math.cos(toRad(DENVER_CENTER[0]))*Math.cos(toRad(latlng.lat))*Math.sin(dLon/2)*Math.sin(dLon/2);
+    const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
+    const d = R * c;
+    return d <= GEOFENCE_RADIUS_M;
+  }
+
+  function setOrigin(latlng){
+    if (!pointInGeofence(latlng)){
+      alert('Origin outside Denver Metro geofence. Please choose a point inside the circle.');
+      return;
+    }
+    origin = latlng;
+    if (originMarker) originMarker.setLatLng(latlng); else originMarker = L.marker(latlng, {title:'Origin'}).addTo(map).bindPopup('Origin');
+  }
+
+  function setDest(latlng){
+    if (!pointInGeofence(latlng)){
+      alert('Destination outside Denver Metro geofence. Please choose a point inside the circle.');
+      return;
+    }
+    dest = latlng;
+    if (destMarker) destMarker.setLatLng(latlng); else destMarker = L.marker(latlng, {title:'Destination', icon: L.icon({iconUrl: 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/images/marker-icon.png', iconAnchor:[12,41]})}).addTo(map).bindPopup('Destination');
+  }
+
+  map.on('click', function(e){
+    if (!origin) setOrigin(e.latlng);
+    else if (!dest) setDest(e.latlng);
+    else { setOrigin(e.latlng); dest = null; if (destMarker) { map.removeLayer(destMarker); destMarker = null } }
+  });
+
+  document.getElementById('clear').addEventListener('click', function(){
+    origin = dest = null;
+    if (originMarker) { map.removeLayer(originMarker); originMarker = null }
+    if (destMarker) { map.removeLayer(destMarker); destMarker = null }
+    if (routeLayer) { map.removeLayer(routeLayer); routeLayer = null }
+    document.getElementById('bikeResult').textContent = 'No route yet.';
+  });
+
+  async function routeBike(){
+    if (!origin || !dest) { alert('Please set both origin and destination.'); return; }
+
+    const coords = [[origin.lng, origin.lat], [dest.lng, dest.lat]];
+    const payload = { profile: 'cycling-regular', coordinates: coords };
+    document.getElementById('bikeResult').textContent = 'Calculating...';
+
+    try {
+      const resp = await fetch('/api/directions', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(payload) });
+      if (!resp.ok){
+        const txt = await resp.text();
+        document.getElementById('bikeResult').textContent = 'Routing error: ' + resp.status + ' ' + txt;
+        return;
+      }
+      const data = await resp.json();
+      // ORS geojson contains features[0].properties.summary
+      const feature = Array.isArray(data.features) && data.features[0];
+      if (!feature){ document.getElementById('bikeResult').textContent = 'No route returned.'; return; }
+
+      const summary = feature.properties && feature.properties.summary;
+      const distance_m = summary && summary.distance;
+      const duration_s = summary && summary.duration;
+      const distance_km = distance_m ? (distance_m/1000).toFixed(2) : 'N/A';
+      const minutes = duration_s ? Math.round(duration_s/60) : 'N/A';
+
+      document.getElementById('bikeResult').textContent = `Distance: ${distance_km} km — Time: ${minutes} min`;
+      lastBike = { distance_m, duration_s };
+      renderComparison();
+
+      if (routeLayer) map.removeLayer(routeLayer);
+      routeLayer = L.geoJSON(data, { style: { color: '#2a9d8f', weight: 5, opacity: 0.8 } }).addTo(map);
+      map.fitBounds(routeLayer.getBounds(), { padding: [20,20] });
+    } catch (err){
+      console.error(err);
+      document.getElementById('bikeResult').textContent = 'Error fetching route: ' + String(err);
+    }
+  }
+
+  document.getElementById('routeBike').addEventListener('click', routeBike);
+  document.getElementById('routeTransit').addEventListener('click', routeTransit);
+
+  // Decode polyline encoded with precision 1e6 (OTP default)
+  function decodePolyline(encoded, precision) {
+    precision = precision || 1e6;
+    const coords = [];
+    let index = 0, lat = 0, lng = 0;
+    while (index < encoded.length) {
+      let result = 1, shift = 0, byte;
+      do {
+        byte = encoded.charCodeAt(index++) - 63 - 1;
+        result += byte << shift;
+        shift += 5;
+      } while (byte >= 0x1f);
+      lat += (result & 1) ? ~(result >> 1) : (result >> 1);
+
+      result = 1; shift = 0;
+      do {
+        byte = encoded.charCodeAt(index++) - 63 - 1;
+        result += byte << shift;
+        shift += 5;
+      } while (byte >= 0x1f);
+      lng += (result & 1) ? ~(result >> 1) : (result >> 1);
+
+      coords.push([lat / precision, lng / precision]);
+    }
+    return coords.map(c => [c[0], c[1]]);
+  }
+
+  async function routeTransit(){
+    if (!origin || !dest) { alert('Please set both origin and destination.'); return; }
+
+    const coords = [[origin.lng, origin.lat], [dest.lng, dest.lat]];
+    document.getElementById('transitResult').textContent = 'Calculating transit...';
+
+    try {
+      const resp = await fetch('/api/transit', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ coordinates: coords }) });
+      if (!resp.ok){
+        const txt = await resp.text();
+        document.getElementById('transitResult').textContent = 'Transit error: ' + resp.status + ' ' + txt;
+        return;
+      }
+      const data = await resp.json();
+      if (!data.plan || !data.plan.itineraries || data.plan.itineraries.length === 0){
+        document.getElementById('transitResult').textContent = 'No transit itineraries found.';
+        return;
+      }
+
+      lastTransit = data.plan.itineraries;
+      renderTransitAlternatives();
+      const itin = data.plan.itineraries[0];
+      const durationMin = Math.round(itin.duration / 60);
+      const transfers = itin.transfers != null ? itin.transfers : (itin.legs ? Math.max(0, itin.legs.length - 1) : 'N/A');
+      document.getElementById('transitResult').innerHTML = `<strong>Duration:</strong> ${durationMin} min — <strong>Transfers:</strong> ${transfers}`;
+      renderComparison();
+
+      // Render legs geometries if present
+      const legGroup = L.layerGroup();
+      itin.legs.forEach(leg => {
+        if (leg.legGeometry && leg.legGeometry.points){
+          const coords = decodePolyline(leg.legGeometry.points, 1e6).map(p => [p[0], p[1]]);
+          const color = leg.mode === 'WALK' ? '#666' : '#2774ae';
+          const line = L.polyline(coords, { color, weight: 4, opacity: 0.9, dashArray: leg.mode === 'WALK' ? '4,8' : null }).addTo(legGroup);
+        }
+      });
+
+      if (routeLayer) { map.removeLayer(routeLayer); routeLayer = null }
+      if (legGroup.getLayers().length) {
+        routeLayer = legGroup.addTo(map);
+        map.fitBounds(routeLayer.getBounds(), { padding: [20,20] });
+      }
+
+      // Show per-leg breakdown
+      const resultsDiv = document.getElementById('transitResult');
+      const legsHtml = itin.legs.map(leg => {
+        const mode = leg.mode || '';
+        const headsign = leg.headsign ? ` towards ${leg.headsign}` : '';
+        const dur = Math.round(leg.duration/60);
+        const from = leg.from && leg.from.name ? leg.from.name : '';
+        const to = leg.to && leg.to.name ? leg.to.name : '';
+        return `<div class="transit-leg"><strong>${mode}</strong>${headsign} — ${dur} min (${from} → ${to})</div>`;
+      }).join('');
+      resultsDiv.innerHTML += '<div>' + legsHtml + '</div>';
+
+      // allow selecting alternatives
+      renderComparison();
+
+    } catch (err){
+      console.error(err);
+      document.getElementById('transitResult').textContent = 'Error fetching transit: ' + String(err);
+    }
+  }
+
+  function renderTransitAlternatives(){
+    const container = document.getElementById('transitAlternatives');
+    container.innerHTML = '';
+    if (!lastTransit || !lastTransit.length) return;
+    lastTransit.forEach((itin, idx) => {
+      const dur = Math.round(itin.duration/60);
+      const transfers = itin.transfers != null ? itin.transfers : (itin.legs ? Math.max(0, itin.legs.length - 1) : 'N/A');
+      const btn = document.createElement('button');
+      btn.textContent = `Option ${idx+1}: ${dur} min, ${transfers} transfers`;
+      btn.addEventListener('click', () => selectTransitItinerary(idx));
+      container.appendChild(btn);
+    });
+  }
+
+  function selectTransitItinerary(idx){
+    if (!lastTransit || !lastTransit[idx]) return;
+    const itin = lastTransit[idx];
+    // clear previous route
+    if (routeLayer) { map.removeLayer(routeLayer); routeLayer = null }
+    const legGroup = L.layerGroup();
+    itin.legs.forEach(leg => {
+      if (leg.legGeometry && leg.legGeometry.points){
+        const coords = decodePolyline(leg.legGeometry.points, 1e6).map(p => [p[0], p[1]]);
+        const color = leg.mode === 'WALK' ? '#666' : '#2774ae';
+        L.polyline(coords, { color, weight: 4, opacity: 0.9, dashArray: leg.mode === 'WALK' ? '4,8' : null }).addTo(legGroup);
+      }
+    });
+    routeLayer = legGroup.addTo(map);
+    map.fitBounds(routeLayer.getBounds(), { padding: [20,20] });
+
+    // update transit details panel
+    const resultsDiv = document.getElementById('transitResult');
+    const durationMin = Math.round(itin.duration / 60);
+    const transfers = itin.transfers != null ? itin.transfers : (itin.legs ? Math.max(0, itin.legs.length - 1) : 'N/A');
+    resultsDiv.innerHTML = `<strong>Selected Option ${idx+1}</strong> — Duration: ${durationMin} min — Transfers: ${transfers}`;
+    const legsHtml = itin.legs.map(leg => {
+      const mode = leg.mode || '';
+      const headsign = leg.headsign ? ` towards ${leg.headsign}` : '';
+      const dur = Math.round(leg.duration/60);
+      const from = leg.from && leg.from.name ? leg.from.name : '';
+      const to = leg.to && leg.to.name ? leg.to.name : '';
+      return `<div class="transit-leg"><strong>${mode}</strong>${headsign} — ${dur} min (${from} → ${to})</div>`;
+    }).join('');
+    resultsDiv.innerHTML += '<div>' + legsHtml + '</div>';
+
+    renderComparison();
+  }
+
+  function renderComparison(){
+    const summary = document.getElementById('compareSummary');
+    const fill = document.getElementById('compareFill');
+    if (!lastBike && !lastTransit){ summary.textContent = 'No comparison yet.'; fill.style.width = '0%'; return; }
+
+    const bikeMin = lastBike ? (lastBike.duration_s/60) : Infinity;
+    const transitMin = (lastTransit && lastTransit[0]) ? (lastTransit[0].duration/60) : Infinity;
+    if (!isFinite(bikeMin) && !isFinite(transitMin)){ summary.textContent = 'No valid times.'; fill.style.width='0%'; return; }
+
+    let better, ratio;
+    if (bikeMin < transitMin){ better = 'Bike'; ratio = Math.min(1, bikeMin / Math.max(1, transitMin)); }
+    else { better = 'Transit'; ratio = Math.min(1, transitMin / Math.max(1, bikeMin)); }
+
+    summary.textContent = `${better} is faster — Bike: ${isFinite(bikeMin)?Math.round(bikeMin)+' min':'N/A'} • Transit: ${isFinite(transitMin)?Math.round(transitMin)+' min':'N/A'}`;
+    // width percentage shows how close the winner is (closer to 100% means winner much faster)
+    fill.style.width = (Math.round((1 - ratio) * 100)) + '%';
+  }
+
+})();
