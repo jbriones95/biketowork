@@ -12,11 +12,24 @@ Local development
 1. Copy .env.example to .env and set your ORS key there (do NOT commit this file):
 
    ORS_API_KEY=your_api_key_here
+   ORS_BASE_URL=https://api.openrouteservice.org
+   OTP_BASE_URL=http://localhost:8080
 
 2. Install dependencies and start the server (the server serves the static frontend and provides a secure proxy):
 
    npm install
    npm start
+
+For local development with automatic restarts when server code changes run:
+
+   npm run dev
+
+For a managed local background process that restarts automatically and can be controlled with pm2:
+
+   npm install -g pm2
+   npm run pm2-start
+   npm run pm2-logs
+
 
 3. Open `http://localhost:3000` in your browser.
 

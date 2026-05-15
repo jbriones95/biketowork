@@ -3,7 +3,12 @@
   "version": "0.1.0",
   "private": true,
   "scripts": {
-    "start": "node server/index.js"
+    "start": "node server/index.js",
+    "dev": "npx nodemon --watch server --exec \"node server/index.js\"",
+    "pm2-start": "npx pm2 start ecosystem.config.js --env production",
+    "pm2-stop": "npx pm2 stop ecosystem.config.js || true",
+    "pm2-restart": "npx pm2 restart ecosystem.config.js || true",
+    "pm2-logs": "npx pm2 logs biketowork --lines 200"
   },
   "dependencies": {
     "express": "^4.18.2",
