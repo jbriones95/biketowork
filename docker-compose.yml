@@ -1,0 +1,40 @@
+version: '3.8'
+services:
+  db:
+    image: postgis/postgis:13-3.3
+    environment:
+      POSTGRES_DB: gis
+      POSTGRES_USER: osm
+      POSTGRES_PASSWORD: osm
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    ports:
+      - "5432:5432"
+
+  importer:
+    image: kartoza/osm2pgrouting:latest
+    depends_on:
+      - db
+    entrypoint: ["/bin/sh","-c"]
+    command: |
+      apk add --no-cache curl && \
+      if [ ! -f /data/region.osm.pbf ]; then \
+        echo 'Downloading Colorado extract (this can be large)...'; \
+        curl -L -o /data/region.osm.pbf https://download.geofabrik.de/north-america/us/colorado-latest.osm.pbf; \
+      fi && \
+      osm2pgrouting -f /data/region.osm.pbf -d gis -U osm -W osm -p 5432 -P osm -H db --clean && \
+      echo 'Import complete.'
+    volumes:
+      - ./data:/data
+
+  router:
+    build: ./app
+    depends_on:
+      - db
+    environment:
+      DATABASE_URL: postgresql://osm:osm@db:5432/gis
+    ports:
+      - "8000:8000"
+
+volumes:
+  pgdata:
