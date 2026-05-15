@@ -84,30 +84,34 @@
   async function routeBike(){
     if (!origin || !dest) { alert('Please set both origin and destination.'); return; }
 
-    const coords = [[origin.lng, origin.lat], [dest.lng, dest.lat]];
-    const payload = { profile: 'cycling-regular', coordinates: coords };
+    // Use public OSRM demo server for bike routing (no API key required).
+    // Note: public demo servers may be rate-limited and are not for heavy production use.
+    const start = `${origin.lng},${origin.lat}`;
+    const end = `${dest.lng},${dest.lat}`;
+    const profile = 'bike'; // OSRM profile name for bicycle routing
+    const url = `https://router.project-osrm.org/route/v1/${profile}/${start};${end}?overview=full&geometries=geojson`;
     document.getElementById('bikeResult').textContent = 'Calculating...';
-
     try {
-      const resp = await fetch('/api/directions', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(payload) });
-      if (!resp.ok){
+      const resp = await fetch(url);
+      if (!resp.ok) {
         const txt = await resp.text();
         document.getElementById('bikeResult').textContent = 'Routing error: ' + resp.status + ' ' + txt;
         return;
       }
       const data = await resp.json();
-      // ORS geojson contains features[0].properties.summary
-      const feature = Array.isArray(data.features) && data.features[0];
-      if (!feature){ document.getElementById('bikeResult').textContent = 'No route returned.'; return; }
-
-      const summary = feature.properties && feature.properties.summary;
-      const distance_m = summary && summary.distance;
-      const duration_s = summary && summary.duration;
+      if (!data.routes || !data.routes.length) {
+        document.getElementById('bikeResult').textContent = 'No route returned.';
+        return;
+      }
+      const route = data.routes[0];
+      const distance_m = route.distance;
+      const duration_s = route.duration;
       const distance_km = distance_m ? (distance_m/1000).toFixed(2) : 'N/A';
       const minutes = duration_s ? Math.round(duration_s/60) : 'N/A';
 
       document.getElementById('bikeResult').textContent = `Distance: ${distance_km} km — Time: ${minutes} min`;
       lastBike = { distance_m, duration_s };
+
       // Estimate calories burned (simple formula: MET for cycling ~8.5, calories = MET * weight_kg * hours)
       const weight = Number(document.getElementById('weight').value) || 70;
       const hours = (duration_s || 0) / 3600;
@@ -117,7 +121,8 @@
       renderComparison();
 
       if (routeLayer) map.removeLayer(routeLayer);
-      routeLayer = L.geoJSON(data, { style: { color: '#2a9d8f', weight: 5, opacity: 0.8 } }).addTo(map);
+      const geojson = { type: 'FeatureCollection', features: [ { type: 'Feature', geometry: route.geometry, properties: {} } ] };
+      routeLayer = L.geoJSON(geojson, { style: { color: '#2a9d8f', weight: 5, opacity: 0.8 } }).addTo(map);
       map.fitBounds(routeLayer.getBounds(), { padding: [20,20] });
     } catch (err){
       console.error(err);
