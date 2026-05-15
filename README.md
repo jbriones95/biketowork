@@ -6,6 +6,7 @@ Key points
 - The OpenRouteService (ORS) API key MUST be kept private. This repository does NOT contain any keys.
 - A small local Express proxy reads the ORS key from the environment and forwards routing requests. That keeps the key off the public frontend and is suitable for local development.
 - The frontend is static and located in `docs/` so it can be published to GitHub Pages. If you want to publish to GitHub Pages and still keep the key private, you must NOT enable routing from the public site — instead run the local proxy and use the local site.
+ - The frontend is static and located in `docs/` so it can be published to GitHub Pages. Serverless functions are included under `api/` so you can deploy the proxy to Vercel (or Netlify functions) and keep your ORS/OTP keys private in the cloud. See the Deploy section.
 
 Local development
 
@@ -40,6 +41,18 @@ How it works
 Publishing to GitHub Pages
 - The static site is ready under `docs/`. If you want to publish to GitHub Pages, push the branch and enable Pages to serve from `docs/` in the repository settings.
 - NOTE: Because GitHub Pages is static and public, do not embed your ORS key there. Either keep the routing feature disabled on the public site or provide your own secure proxy.
+
+Serverless deployment (Vercel recommended)
+
+1. Install Vercel CLI and login: `npm i -g vercel` then `vercel login`.
+2. From this repo root run `vercel` and follow prompts, or connect the GitHub repo in the Vercel dashboard.
+3. Set these environment variables in the Vercel project settings (not in the repo):
+   - ORS_API_KEY (your OpenRouteService key)
+   - OTP_BASE_URL (your OTP instance URL, if you use OTP)
+   - ORS_BASE_URL (optional, defaults to https://api.openrouteservice.org)
+4. Configure the Vercel build to output static files from the `docs/` folder. Vercel will automatically map `/api/*` to the serverless functions in `api/`.
+
+After deployment, the frontend will call the serverless functions (CORS allowed) and routing will work without any server running on your machine.
 
 Extending transit routing
 - ORS does not provide public-transit routing. To add transit comparisons, you'll need a transit routing provider (e.g. OpenTripPlanner, Google Directions Transit) and a similar secure proxy pattern.
