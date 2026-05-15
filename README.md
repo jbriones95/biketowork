@@ -42,8 +42,9 @@ Publishing to GitHub Pages
 - The static site is ready under `docs/`. If you want to publish to GitHub Pages, push the branch and enable Pages to serve from `docs/` in the repository settings.
 - NOTE: Because GitHub Pages is static and public, do not embed your ORS key there. Either keep the routing feature disabled on the public site or provide your own secure proxy.
 
-Serverless deployment (Vercel recommended)
+Serverless deployment (Vercel or Cloudflare Workers)
 
+Vercel (easy):
 1. Install Vercel CLI and login: `npm i -g vercel` then `vercel login`.
 2. From this repo root run `vercel` and follow prompts, or connect the GitHub repo in the Vercel dashboard.
 3. Set these environment variables in the Vercel project settings (not in the repo):
@@ -52,7 +53,15 @@ Serverless deployment (Vercel recommended)
    - ORS_BASE_URL (optional, defaults to https://api.openrouteservice.org)
 4. Configure the Vercel build to output static files from the `docs/` folder. Vercel will automatically map `/api/*` to the serverless functions in `api/`.
 
-After deployment, the frontend will call the serverless functions (CORS allowed) and routing will work without any server running on your machine.
+Cloudflare Workers (no server, edge-deployed):
+1. Install Wrangler: `npm i -g wrangler` and login: `wrangler login`.
+2. Set these secrets in your Cloudflare account for the Worker:
+   - ORS_API_KEY (use `wrangler secret put ORS_API_KEY`)
+   - OTP_BASE_URL (use `wrangler secret put OTP_BASE_URL`)
+3. Build and publish the site and worker with Wrangler. The simplest approach is to publish the static site to Workers Sites and include the worker script. Use `wrangler publish` from the `cloudflare` folder after configuring `wrangler.toml` (example included).
+4. The Worker will serve `docs/` as the static site and expose `/api/directions` and `/api/transit` endpoints that the frontend can call. This keeps keys private at the edge.
+
+I included a Cloudflare Worker example in `cloudflare/worker.js` and an example `wrangler.toml`. You'll need to adapt the wrangler config for your account and set secrets with `wrangler secret put`.
 
 Extending transit routing
 - ORS does not provide public-transit routing. To add transit comparisons, you'll need a transit routing provider (e.g. OpenTripPlanner, Google Directions Transit) and a similar secure proxy pattern.

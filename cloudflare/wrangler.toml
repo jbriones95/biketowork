@@ -1,0 +1,10 @@
+[site]
+bucket = "docs"
+entry-point = "./"
+
+[env.production]
+name = "biketowork"
+
+[vars]
+# You can also set secrets with `wrangler secret put ORS_API_KEY`
+ORS_BASE_URL = "https://api.openrouteservice.org"
