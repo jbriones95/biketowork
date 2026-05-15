@@ -1,10 +1,29 @@
-[site]
-bucket = "docs"
-entry-point = "./"
+# Wrangler configuration for deploying the site as a Workers Site and the Worker as the edge
+# Replace the placeholder values below (ACCOUNT_ID, optional zone_id and routes) before publishing.
+# Steps:
+# 1. Install Wrangler v2: `npm i -g wrangler`
+# 2. Login: `wrangler login`
+# 3. Set secrets: `wrangler secret put ORS_API_KEY`, `wrangler secret put OTP_BASE_URL` (and ORS_BASE_URL if needed)
+# 4. From repo root run: `wrangler publish --preview` (or omit --preview to publish to your production worker)
 
-[env.production]
 name = "biketowork"
+main = "./cloudflare/worker.js"
+compatibility_date = "2026-05-15"
+
+# Your Cloudflare account id. Replace with the value from the Cloudflare dashboard.
+account_id = "YOUR_ACCOUNT_ID"
+
+# If you want to publish to workers.dev (short-lived URL), set workers_dev = true.
+workers_dev = true
+
+[site]
+bucket = "./docs"
+entry-point = "."
+
+# Optional: to bind this worker to a custom domain or zone routes, uncomment and set the zone_id and routes
+# zone_id = "YOUR_ZONE_ID"
+# routes = ["example.com/*"]
 
 [vars]
-# You can also set secrets with `wrangler secret put ORS_API_KEY`
-ORS_BASE_URL = "https://api.openrouteservice.org"
+# Runtime variables can be configured here, but secrets should be added via `wrangler secret put` instead
+# ORS_BASE_URL = "https://api.openrouteservice.org"
